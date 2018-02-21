@@ -1,0 +1,9 @@
+--- httpd-2.2.25.orig/modules/metadata/config.m4	2009-02-12 14:43:52.000000000 -0500
++++ httpd-2.2.25/modules/metadata/config.m4	2014-10-07 08:15:57.000000000 -0400
+@@ -19,5 +19,6 @@ APACHE_MODULE(usertrack, user-session tr
+ APACHE_MODULE(unique_id, per-request unique ids)
+ APACHE_MODULE(setenvif, basing ENV vars on headers, , , yes)
+ APACHE_MODULE(version, determining httpd version in config files, , , yes)
++APACHE_MODULE(remoteip, translate header contents to an apparent client remote_ip, , , most)
+ 
+ APACHE_MODPATH_FINISH

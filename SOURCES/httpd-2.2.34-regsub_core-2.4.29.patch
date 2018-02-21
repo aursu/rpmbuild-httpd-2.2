@@ -1,0 +1,320 @@
+diff -rupN httpd-2.2.34.orig/include/util_varbuf.h httpd-2.2.34/include/util_varbuf.h
+--- httpd-2.2.34.orig/include/util_varbuf.h	1969-12-31 19:00:00.000000000 -0500
++++ httpd-2.2.34/include/util_varbuf.h	2018-02-07 05:49:53.202306393 -0500
+@@ -0,0 +1,103 @@
++/* Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++/**
++ * @file util_varbuf.h
++ * @brief Apache resizable variable length buffer library
++ *
++ * @defgroup APACHE_CORE_VARBUF Variable length buffer library
++ * @ingroup APACHE_CORE
++ *
++ * This set of functions provides resizable buffers. While the primary
++ * usage is with NUL-terminated strings, most functions also work with
++ * arbitrary binary data.
++ * 
++ * @{
++ */
++
++#ifndef AP_VARBUF_H
++#define AP_VARBUF_H
++
++#include "apr.h"
++#include "apr_allocator.h"
++
++#include "httpd.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define AP_VARBUF_UNKNOWN APR_SIZE_MAX
++struct ap_varbuf_info;
++
++/** A resizable buffer. */
++struct ap_varbuf {
++    /** The actual buffer; will point to a const '\\0' if avail == 0 and
++     *  to memory of the same lifetime as the pool otherwise. */
++    char *buf;
++
++    /** Allocated size of the buffer (minus one for the final \\0);
++     *  must only be changed using ap_varbuf_grow(). */
++    apr_size_t avail;
++
++    /** Length of string in buffer, or AP_VARBUF_UNKNOWN. This determines how
++     *  much memory is copied by ap_varbuf_grow() and where
++     *  ap_varbuf_strmemcat() will append to the buffer. */
++    apr_size_t strlen;
++
++    /** The pool for memory allocations and for registering the cleanup;
++     *  the buffer memory will be released when this pool is cleared. */
++    apr_pool_t *pool;
++
++    /** Opaque info for memory allocation. */
++    struct ap_varbuf_info *info;
++};
++
++/**
++ * Grow a resizable buffer. If the vb->buf cannot be grown in place, it will
++ * be reallocated and the first vb->strlen + 1 bytes of memory will be copied
++ * to the new location. If vb->strlen == AP_VARBUF_UNKNOWN, the whole buffer
++ * is copied.
++ * @param   vb          Pointer to the ap_varbuf struct
++ * @param   new_size    The minimum new size of the buffer
++ * @note ap_varbuf_grow() will usually at least double vb->buf's size with
++ *       every invocation in order to reduce reallocations.
++ * @note ap_varbuf_grow() will use pool memory for small and allocator
++ *       mem nodes for larger allocations.
++ * @note ap_varbuf_grow() will call vb->pool's abort function if out of memory.
++ */
++AP_DECLARE(void) ap_varbuf_grow(struct ap_varbuf *vb, apr_size_t new_size);
++
++/**
++ * Concatenate a string to an ap_varbuf. vb->strlen determines where
++ * the string is appended in the buffer. If vb->strlen == AP_VARBUF_UNKNOWN,
++ * the string will be appended at the first NUL byte in the buffer.
++ * If len == 0, ap_varbuf_strmemcat() does nothing.
++ * @param   vb      Pointer to the ap_varbuf struct
++ * @param   str     The string to append; must be at least len bytes long
++ * @param   len     The number of characters of *str to concatenate to the buf
++ * @note vb->strlen will be set to the length of the new string
++ * @note if len != 0, vb->buf will always be NUL-terminated
++ */
++AP_DECLARE(void) ap_varbuf_strmemcat(struct ap_varbuf *vb, const char *str,
++                                     int len);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif  /* !AP_VARBUF_H */
++/** @} */
+diff -rupN httpd-2.2.34.orig/server/util.c httpd-2.2.34/server/util.c
+--- httpd-2.2.34.orig/server/util.c	2017-06-19 12:48:42.000000000 -0400
++++ httpd-2.2.34/server/util.c	2018-02-07 05:43:24.092819107 -0500
+@@ -52,6 +52,7 @@
+ #include "http_protocol.h"
+ #include "http_config.h"
+ #include "util_ebcdic.h"
++#include "util_varbuf.h"
+ 
+ #ifdef HAVE_PWD_H
+ #include <pwd.h>
+@@ -346,6 +347,131 @@ AP_DECLARE(const char *) ap_stripprefix(
+     return bigstring;
+ }
+ 
++#define VARBUF_SMALL_SIZE 2048
++#define VARBUF_MAX_SIZE   (APR_SIZE_MAX - 1 -                                \
++                           APR_ALIGN_DEFAULT(sizeof(struct ap_varbuf_info)))
++
++struct ap_varbuf_info {
++    struct apr_memnode_t *node;
++    apr_allocator_t *allocator;
++};
++
++static apr_status_t varbuf_cleanup(void *info_)
++{
++    struct ap_varbuf_info *info = info_;
++    info->node->next = NULL;
++    apr_allocator_free(info->allocator, info->node);
++    return APR_SUCCESS;
++}
++
++const char nul = '\0';
++static char * const varbuf_empty = (char *)&nul;
++
++AP_DECLARE(void) ap_varbuf_grow(struct ap_varbuf *vb, apr_size_t new_len)
++{
++    apr_memnode_t *new_node = NULL;
++    apr_allocator_t *allocator;
++    struct ap_varbuf_info *new_info;
++    char *new;
++
++    AP_DEBUG_ASSERT(vb->strlen == AP_VARBUF_UNKNOWN || vb->avail >= vb->strlen);
++
++    if (new_len <= vb->avail)
++        return;
++
++    if (new_len < 2 * vb->avail && vb->avail < VARBUF_MAX_SIZE/2) {
++        /* at least double the size, to avoid repeated reallocations */
++        new_len = 2 * vb->avail;
++    }
++    else if (new_len > VARBUF_MAX_SIZE) {
++        apr_abortfunc_t abort_fn = apr_pool_abort_get(vb->pool);
++        ap_assert(abort_fn != NULL);
++        abort_fn(APR_ENOMEM);
++        return;
++    }
++
++    new_len++;  /* add space for trailing \0 */
++    if (new_len <= VARBUF_SMALL_SIZE) {
++        new_len = APR_ALIGN_DEFAULT(new_len);
++        new = apr_palloc(vb->pool, new_len);
++        if (vb->avail && vb->strlen != 0) {
++            AP_DEBUG_ASSERT(vb->buf != NULL);
++            AP_DEBUG_ASSERT(vb->buf != varbuf_empty);
++            if (new == vb->buf + vb->avail + 1) {
++                /* We are lucky: the new memory lies directly after our old
++                 * buffer, we can now use both.
++                 */
++                vb->avail += new_len;
++                return;
++            }
++            else {
++                /* copy up to vb->strlen + 1 bytes */
++                memcpy(new, vb->buf, vb->strlen == AP_VARBUF_UNKNOWN ?
++                                     vb->avail + 1 : vb->strlen + 1);
++            }
++        }
++        else {
++            *new = '\0';
++        }
++        vb->avail = new_len - 1;
++        vb->buf = new;
++        return;
++    }
++
++    /* The required block is rather larger. Use allocator directly so that
++     * the memory can be freed independently from the pool. */
++    allocator = apr_pool_allocator_get(vb->pool);
++    if (new_len <= VARBUF_MAX_SIZE)
++        new_node = apr_allocator_alloc(allocator,
++                                       new_len + APR_ALIGN_DEFAULT(sizeof(*new_info)));
++    if (!new_node) {
++        apr_abortfunc_t abort_fn = apr_pool_abort_get(vb->pool);
++        ap_assert(abort_fn != NULL);
++        abort_fn(APR_ENOMEM);
++        return;
++    }
++    new_info = (struct ap_varbuf_info *)new_node->first_avail;
++    new_node->first_avail += APR_ALIGN_DEFAULT(sizeof(*new_info));
++    new_info->node = new_node;
++    new_info->allocator = allocator;
++    new = new_node->first_avail;
++    AP_DEBUG_ASSERT(new_node->endp - new_node->first_avail >= new_len);
++    new_len = new_node->endp - new_node->first_avail;
++
++    if (vb->avail && vb->strlen != 0)
++        memcpy(new, vb->buf, vb->strlen == AP_VARBUF_UNKNOWN ?
++                             vb->avail + 1 : vb->strlen + 1);
++    else
++        *new = '\0';
++    if (vb->info)
++        apr_pool_cleanup_run(vb->pool, vb->info, varbuf_cleanup);
++    apr_pool_cleanup_register(vb->pool, new_info, varbuf_cleanup,
++                              apr_pool_cleanup_null);
++    vb->info = new_info;
++    vb->buf = new;
++    vb->avail = new_len - 1;
++}
++
++AP_DECLARE(void) ap_varbuf_strmemcat(struct ap_varbuf *vb, const char *str,
++                                     int len)
++{
++    if (len == 0)
++        return;
++    if (!vb->avail) {
++        ap_varbuf_grow(vb, len);
++        memcpy(vb->buf, str, len);
++        vb->buf[len] = '\0';
++        vb->strlen = len;
++        return;
++    }
++    if (vb->strlen == AP_VARBUF_UNKNOWN)
++        vb->strlen = strlen(vb->buf);
++    ap_varbuf_grow(vb, vb->strlen + len);
++    memcpy(vb->buf + vb->strlen, str, len);
++    vb->strlen += len;
++    vb->buf[vb->strlen] = '\0';
++}
++
+ /* This function substitutes for $0-$9, filling in regular expression
+  * submatches. Pass it the same nmatch and pmatch arguments that you
+  * passed ap_regexec(). pmatch should not be greater than the maximum number
+@@ -361,7 +487,7 @@ AP_DECLARE(const char *) ap_stripprefix(
+  */
+ 
+ static apr_status_t regsub_core(apr_pool_t *p, char **result,
+-                                const char *input,
++                                struct ap_varbuf *vb, const char *input,
+                                 const char *source, apr_size_t nmatch,
+                                 ap_regmatch_t pmatch[], apr_size_t maxlen)
+ {
+@@ -371,15 +497,21 @@ static apr_status_t regsub_core(apr_pool
+     apr_size_t no;
+     apr_size_t len = 0;
+ 
+-    AP_DEBUG_ASSERT(result && p);
++    AP_DEBUG_ASSERT((result && p && !vb) || (vb && !p && !result));
+     if (!source || nmatch>AP_MAX_REG_MATCH)
+         return APR_EINVAL;
+     if (!nmatch) {
+         len = strlen(src);
+         if (maxlen > 0 && len >= maxlen)
+             return APR_ENOMEM;
+-        *result = apr_pstrmemdup(p, src, len);
+-        return APR_SUCCESS;
++        if (!vb) {
++            *result = apr_pstrmemdup(p, src, len);
++            return APR_SUCCESS;
++        }
++        else {
++            ap_varbuf_strmemcat(vb, src, len);
++            return APR_SUCCESS;
++        }
+     }
+ 
+     /* First pass, find the size */
+@@ -410,7 +542,16 @@ static apr_status_t regsub_core(apr_pool
+     if (len >= maxlen && maxlen > 0)
+         return APR_ENOMEM;
+ 
+-    *result = dst = apr_palloc(p, len + 1);
++    if (!vb) {
++        *result = dst = apr_palloc(p, len + 1);
++    }
++    else {
++        if (vb->strlen == AP_VARBUF_UNKNOWN)
++            vb->strlen = strlen(vb->buf);
++        ap_varbuf_grow(vb, vb->strlen + len);
++        dst = vb->buf + vb->strlen;
++        vb->strlen += len;
++    }
+ 
+     /* Now actually fill in the string */
+ 
+@@ -450,7 +591,7 @@ AP_DECLARE(char *) ap_pregsub(apr_pool_t
+                               ap_regmatch_t pmatch[])
+ {
+     char *result;
+-    apr_status_t rc = regsub_core(p, &result, input, source, nmatch,
++    apr_status_t rc = regsub_core(p, &result, NULL, input, source, nmatch,
+                                   pmatch, AP_PREGSUB_MAXLEN);
+     if (rc != APR_SUCCESS)
+         result = NULL;
+@@ -462,7 +603,7 @@ AP_DECLARE(apr_status_t) ap_pregsub_ex(a
+                                        apr_size_t nmatch, ap_regmatch_t pmatch[],
+                                        apr_size_t maxlen)
+ {
+-    apr_status_t rc = regsub_core(p, result, input, source, nmatch,
++    apr_status_t rc = regsub_core(p, result, NULL, input, source, nmatch,
+                                   pmatch, maxlen);
+     if (rc != APR_SUCCESS)
+         *result = NULL;

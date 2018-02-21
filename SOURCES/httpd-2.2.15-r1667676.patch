@@ -1,0 +1,14 @@
+diff --git a/modules/aaa/mod_authz_host.c b/modules/aaa/mod_authz_host.c
+index f23288f..0d31a8b 100644
+--- a/modules/aaa/mod_authz_host.c
++++ b/modules/aaa/mod_authz_host.c
+@@ -158,6 +158,9 @@ static const char *allow_cmd(cmd_parms *cmd, void *dv, const char *from,
+         }
+         a->type = T_IP;
+     }
++    else if (ap_strchr(where, '#')) {
++        return "No comments are allowed here";
++    }
+     else { /* no slash, didn't look like an IP address => must be a host */
+         a->type = T_HOST;
+     }

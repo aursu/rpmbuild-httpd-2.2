@@ -1,0 +1,28 @@
+
+Adjust paths in the default layout.
+
+--- httpd-2.2.22/config.layout.layout
++++ httpd-2.2.22/config.layout
+@@ -20,17 +20,17 @@
+     mandir:        ${prefix}/man
+     sysconfdir:    ${prefix}/conf
+     datadir:       ${prefix}
+-    installbuilddir: ${datadir}/build
++    installbuilddir: ${libdir}/httpd/build
+     errordir:      ${datadir}/error
+     iconsdir:      ${datadir}/icons
+     htdocsdir:     ${datadir}/htdocs
+     manualdir:     ${datadir}/manual
+     cgidir:        ${datadir}/cgi-bin
+     includedir:    ${prefix}/include
+-    localstatedir: ${prefix}
+-    runtimedir:    ${localstatedir}/logs
+-    logfiledir:    ${localstatedir}/logs
+-    proxycachedir: ${localstatedir}/proxy
++    localstatedir: /var
++    runtimedir:    ${localstatedir}/run/httpd
++    logfiledir:    ${localstatedir}/log/httpd
++    proxycachedir: ${localstatedir}/cache/mod_proxy
+ </Layout>
+ 
+ #   GNU standards conforming path layout.
