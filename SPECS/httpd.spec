@@ -395,7 +395,6 @@ fi
 %pre
 #/usr/sbin/useradd -c "Apache" -u 48 \
 #	-s /sbin/nologin -r -d %{contentdir} apache 2> /dev/null || :
-# Add the "nogroup" group to be compatible with old configs
 if ! grep -q ^nogroup: /etc/group; then
     /usr/sbin/groupadd -o -g 65534 nogroup
 fi
