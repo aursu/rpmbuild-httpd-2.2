@@ -28,8 +28,6 @@ Source3: httpd.logrotate
 Source5: httpd.sysconf
 Source10: httpd.conf
 Source11: ssl.conf
-
-# files for virtual hosts and cluster specific settings
 Source17: httpd.init
 
 # Documentation
@@ -38,7 +36,6 @@ Source33: README.confd
 
 Source40: mod_remoteip.c
 Source41: remoteip.conf
-
 Source42: info.conf
 
 # build/scripts patches
@@ -89,7 +86,6 @@ Provides: webserver
 Provides: httpd-mmn = %{mmn}, httpd-mmn = %{mmnisa}
 Requires: httpd-tools = %{version}-%{release}
 Requires: /etc/mime.types, system-logos >= 7.92.1-1
-#Requires: apr >= 1.2.0, apr-util >= 1.2.0
 Requires(pre): /usr/sbin/groupadd /usr/sbin/usermod
 
 %description
@@ -100,7 +96,6 @@ web server.
 Group: Development/Libraries
 Summary: Development interfaces for the Apache HTTP server
 Obsoletes: secureweb-devel, apache-devel, stronghold-apache-devel
-#Requires: apr-devel, apr-util-devel, pkgconfig
 Requires: pkgconfig
 Requires: httpd = %{version}-%{release}
 Requires: httpd-apr = %{version}-%{release}
