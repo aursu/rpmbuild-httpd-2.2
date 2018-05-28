@@ -150,9 +150,9 @@ for XML, LDAP, database interfaces, URI parsing and more.
 Group: System Environment/Daemons
 Summary: SSL/TLS module for the Apache HTTP Server
 Epoch: 1
-BuildRequires: openssl-devel >= 1.0.1e
+BuildRequires: openssl-devel
 Requires(pre): httpd
-Requires: httpd = 0:%{version}-%{release}, httpd-mmn = %{mmnisa}, openssl >= 1.0.1e
+Requires: httpd = 0:%{version}-%{release}, httpd-mmn = %{mmnisa}, openssl
 Obsoletes: stronghold-mod_ssl
 
 %description -n mod_ssl
