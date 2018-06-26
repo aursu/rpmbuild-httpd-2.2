@@ -15,7 +15,7 @@
 %define aprver 1
 %define apuver 1
 
-%global rpmrel 5
+%global rpmrel 6
 
 Summary: Apache HTTP Server
 Name: httpd
@@ -517,6 +517,9 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/httpd/conf.d/09-info.conf
 
 %changelog
+* Tue Jun 26 2018 Alexander Ursu <alexander.ursu@gmail.com> - 2.2.34-6
+- downgraded mod_remoteip from 2.4 to 2.3 (fixed broken logs issue)
+
 * Wed Feb 07 2018 Alexander Ursu <alexander.ursu@gmail.com> - 2.2.34-5
 - ported variable length buffer library from 2.4
 - ported mod_substitute from 2.4.29
