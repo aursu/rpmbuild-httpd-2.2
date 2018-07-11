@@ -6,7 +6,7 @@ services:
       - rpm6:/home/centos/rpmbuild/RPMS
     build:
       context: .
-    image: rpmbuild:6-ap22build
+    image: ap22build:el6
 
 volumes:
   rpms:
