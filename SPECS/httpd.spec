@@ -15,7 +15,7 @@
 %define aprver 1
 %define apuver 1
 
-%global rpmrel 6
+%global rpmrel 7
 
 Summary: Apache HTTP Server
 Name: httpd
@@ -388,13 +388,10 @@ if readelf -d $RPM_BUILD_ROOT%{_libdir}/httpd/modules/*.so | grep TEXTREL; then
 fi
 
 %pre
-#/usr/sbin/useradd -c "Apache" -u 48 \
-#	-s /sbin/nologin -r -d %{contentdir} apache 2> /dev/null || :
-if ! grep -q ^nogroup: /etc/group; then
-    /usr/sbin/groupadd -o -g 65534 nogroup
-fi
-/usr/bin/pkill -u nobody && /usr/sbin/usermod -u 65534 -o nobody ||
-/usr/sbin/usermod -u 65534 -o nobody
+getent group apache >/dev/null || groupadd -g 48 -r apache
+getent passwd apache >/dev/null || \
+  useradd -r -u 48 -g apache -s /sbin/nologin \
+    -d %{contentdir} -c "Apache" apache
 
 %post
 # Register the httpd service
@@ -449,9 +446,9 @@ rm -rf $RPM_BUILD_ROOT
 %config %{contentdir}/error/*.var
 %config %{contentdir}/error/include/*.html
 
-%attr(0710,root,nogroup) %dir %{_localstatedir}/run/httpd
+%attr(0710,root,apache) %dir %{_localstatedir}/run/httpd
 %attr(0700,root,root) %dir %{_localstatedir}/log/httpd
-%attr(0700,nobody,nogroup) %dir %{_localstatedir}/cache/mod_proxy
+%attr(0700,apache,apache) %dir %{_localstatedir}/cache/mod_proxy
 
 %exclude %{_mandir}/man1
 %exclude %{_mandir}/man8
@@ -492,10 +489,10 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 %{_libdir}/httpd/modules/mod_ssl.so
 %config(noreplace) %{_sysconfdir}/httpd/conf.d/05-ssl.conf
-%attr(0700,nobody,root) %dir %{_localstatedir}/cache/mod_ssl
-%attr(0600,nobody,root) %ghost %{_localstatedir}/cache/mod_ssl/scache.dir
-%attr(0600,nobody,root) %ghost %{_localstatedir}/cache/mod_ssl/scache.pag
-%attr(0600,nobody,root) %ghost %{_localstatedir}/cache/mod_ssl/scache.sem
+%attr(0700,apache,root) %dir %{_localstatedir}/cache/mod_ssl
+%attr(0600,apache,root) %ghost %{_localstatedir}/cache/mod_ssl/scache.dir
+%attr(0600,apache,root) %ghost %{_localstatedir}/cache/mod_ssl/scache.pag
+%attr(0600,apache,root) %ghost %{_localstatedir}/cache/mod_ssl/scache.sem
 
 %files devel
 %defattr(-,root,root)
@@ -517,6 +514,9 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/httpd/conf.d/09-info.conf
 
 %changelog
+* Mon Mar  4 2019 Alexander Ursu <alexander.ursu@gmail.com> - 2.2.34-7
+- switch back to apache/apache user-group
+
 * Tue Jun 26 2018 Alexander Ursu <alexander.ursu@gmail.com> - 2.2.34-6
 - downgraded mod_remoteip from 2.4 to 2.3 (fixed broken logs issue)
 
