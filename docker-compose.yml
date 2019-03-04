@@ -1,12 +1,11 @@
 version: "3.4"
 services:
-  ap22build:
+  centos6ap22build:
     volumes:
       - rpms:/home/centos/rpmbuild/SRPMS
       - rpm6:/home/centos/rpmbuild/RPMS
     build:
       context: .
-    image: aursu/ap22build:el6
 
 volumes:
   rpms:

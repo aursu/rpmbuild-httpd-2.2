@@ -1,0 +1,7 @@
+version: "3.4"
+services:
+  centos6ap22base:
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+    image: aursu/ap22build:6-base

@@ -1,12 +1,4 @@
-FROM aursu/rpmbuild:6-build
-
-USER root
-RUN yum -y install \
-        expat-devel \
-        openssl-devel \
-        xmlto \
-        zlib-devel \
-    && yum clean all && rm -rf /var/cache/yum
+FROM aursu/ap22build:6-base
 
 COPY SOURCES ${BUILD_TOPDIR}/SOURCES
 COPY SPECS ${BUILD_TOPDIR}/SPECS
