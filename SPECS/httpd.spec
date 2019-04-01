@@ -15,7 +15,7 @@
 %define aprver 1
 %define apuver 1
 
-%global rpmrel 7
+%global rpmrel 8
 
 Summary: Apache HTTP Server
 Name: httpd
@@ -388,9 +388,9 @@ if readelf -d $RPM_BUILD_ROOT%{_libdir}/httpd/modules/*.so | grep TEXTREL; then
 fi
 
 %pre
-getent group apache >/dev/null || groupadd -g 48 -r apache
+getent group apache >/dev/null || groupadd -g 48 -o -r apache
 getent passwd apache >/dev/null || \
-  useradd -r -u 48 -g apache -s /sbin/nologin \
+  useradd -r -u 48 -o -g apache -s /sbin/nologin \
     -d %{contentdir} -c "Apache" apache
 
 %post
@@ -514,6 +514,9 @@ rm -rf $RPM_BUILD_ROOT
 %config(noreplace) %{_sysconfdir}/httpd/conf.d/09-info.conf
 
 %changelog
+* Mon Apr  1 2019 Alexander Ursu <alexander.ursu@gmail.com> - 2.2.34-8
+- added allow duplicate uid/gid into %pre useradd/groupadd
+
 * Mon Mar  4 2019 Alexander Ursu <alexander.ursu@gmail.com> - 2.2.34-7
 - switch back to apache/apache user-group
 
